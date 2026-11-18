@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Happy Birthday Jacqueline ♥">
+<meta property="og:description" content="Tap to open">
+<title>Happy Birthday Jacqueline ♥</title>
+<!--
+  Web version of bouquet3d.py from
+  https://github.com/alishsharma17/Ascii-Flower-Bouquet-
+
+  MIT License
+  Copyright (c) 2026 Alish Sharma
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; color: #ffafd7;
+         -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+  #open { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px; background: rgba(0,0,0,.82); cursor: pointer;
+          transition: opacity .8s ease; z-index: 2; }
+  #open.gone { opacity: 0; pointer-events: none; }
+  #open .heart { font-size: 54px; color: #ff5faf; animation: beat 1.1s ease-in-out infinite; }
+  #open .txt { font-size: 18px; letter-spacing: .18em; }
+  @keyframes beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  #snd { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 1;
+         background: none; border: 0; font: inherit; font-size: 22px; color: #ffafd7; padding: 10px;
+         cursor: pointer; opacity: .85; }
+  #snd.off { opacity: .3; text-decoration: line-through; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="snd" aria-label="Music on or off">&#9834;</button>
+<div id="open"><div class="heart">&#9829;&#xFE0E;</div><div class="txt">tap to open</div></div>
+
+<script>
+// ---- change these to make it yours ----
+const MESSAGE = ["Happy Birthday", "Jacqueline Enriquez ♥"];
+const SPIN_SPEED = 0.6;
+const TILT = 0.30;
+const CAM_DIST = 4.0;
+const NUM_HEARTS = 18;
+const FPS = 30;
+const PLAY_SONG = true;
+// ---------------------------------------
+
+const WHITE = [244, 248, 251, 254, 255, 231];
+const PINK = [125, 162, 168, 205, 211, 218, 225];
+const RED = [52, 88, 124, 160, 196, 203];
+const PURPLE = [54, 91, 97, 134, 140, 183];
+const YELLOW = [136, 178, 214, 220, 226, 229];
+const ORANGE = [130, 166, 202, 208, 214, 216];
+const GOLD_CENTER = [94, 136, 178, 214, 220];
+const DARK_CENTER = [52, 58, 94, 130, 136];
+const GREENS = [22, 28, 28, 34, 35, 71, 77, 114];
+const PAPER = [101, 144, 187, 223, 230, 231];
+const RIBBON = [88, 125, 161, 197, 204, 211];
+const HEART_COLORS = [161, 197, 204, 205, 211, 218];
+const MSG_COLORS = [161, 168, 205, 211, 218, 225, 218, 211, 205, 168];
+const SHADE = ".:-=+*%@";
+const PETAL_SHADE = "+*#%";
+const PIVOT_Y = 0.2;
+const HEART = "♥︎";
+const DOT = "·";
+
+const _L = [-0.45, 0.6, 0.66];
+const _n = Math.hypot(_L[0], _L[1], _L[2]);
+const LX = _L[0] / _n, LY = _L[1] / _n, LZ = _L[2] / _n;
+
+const DISC_TYPES = [
+  [WHITE, GOLD_CENTER, 13], [PINK, GOLD_CENTER, 8], [RED, DARK_CENTER, 6],
+  [PURPLE, GOLD_CENTER, 7], [YELLOW, DARK_CENTER, 12], [ORANGE, DARK_CENTER, 9],
+];
+const TULIP_COLORS = [RED, PINK, YELLOW];
+
+// terminal 256-color codes -> css colors
+const CSS = [];
+(function () {
+  const base = ["#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#008080", "#c0c0c0",
+                "#808080", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"];
+  const lv = [0, 95, 135, 175, 215, 255];
+  for (let i = 0; i < 256; i++) {
+    if (i < 16) CSS.push(base[i]);
+    else if (i < 232) {
+      const n = i - 16;
+      CSS.push("rgb(" + lv[Math.floor(n / 36)] + "," + lv[Math.floor(n / 6) % 6] + "," + lv[n % 6] + ")");
+    } else { const g = 8 + 10 * (i - 232); CSS.push("rgb(" + g + "," + g + "," + g + ")"); }
+  }
+})();
+
+function makeRandom(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function norm(v) { const m = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / m, v[1] / m, v[2] / m]; }
+function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function add(p, d, k) { return [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + d[2] * k]; }
+
+function buildScene() {
+  const rnd = makeRandom(21);
+  const uni = (a, b) => a + (b - a) * rnd();
+  const pts = [];
+  const neck = [0.0, -0.12, 0.0];
+
+  const C = [0.0, 0.12, 0.0], D = 0.64, N = 10;
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const heads = [];
+  for (let i = 0; i < N; i++) {
+    const el = (88 - 60 * Math.sqrt(i / (N - 1))) * Math.PI / 180;
+    const az = i * golden;
+    const d = [Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)];
+    heads.push([add(C, d, D * uni(0.92, 1.05)), norm(d)]);
+  }
+
+  const tulipSlots = [3, 8];
+  const flowers = [];
+  let discI = 0;
+  heads.forEach(function (h, idx) {
+    const pos = h[0], axis = h[1];
+    const base = add(pos, axis, -0.03);
+    for (let j = 0; j < 70; j++) {
+      const t = j / 69;
+      pts.push([base[0] + (neck[0] - base[0]) * t, base[1] + (neck[1] - base[1]) * t,
+                base[2] + (neck[2] - base[2]) * t, axis[0], 0.0, axis[2], GREENS, -0.15, true, null]);
+    }
+    if (tulipSlots.indexOf(idx) >= 0) {
+      const nT = tulipSlots.filter(k => k < idx).length;
+      flowers.push([pos, "tulip", TULIP_COLORS[nT % TULIP_COLORS.length], null, 0, 0.11, uni(0, 6.28)]);
+    } else {
+      const dt = DISC_TYPES[discI % DISC_TYPES.length];
+      discI++;
+      flowers.push([pos, "disc", dt[0], dt[1], dt[2], uni(0.12, 0.14), uni(0, 6.28)]);
+    }
+  });
+
+  // leaves
+  for (let i = 0; i < 8; i++) {
+    const a = (i + 0.4) / 8 * 2 * Math.PI;
+    const c = Math.cos(a), s = Math.sin(a);
+    const base = [0.26 * c, 0.30, 0.26 * s];
+    const d = norm([c, 0.15, s]);
+    const side = [-s, 0.0, c];
+    const n = norm(cross(side, d));
+    const L = 0.30, W = 0.07;
+    for (let ti = 0; ti < 32; ti++) {
+      const t = ti / 31;
+      for (let wi = -5; wi <= 5; wi++) {
+        const w = wi / 5;
+        const curl = 0.025 * w * w;
+        const sw = W * Math.sin(Math.PI * t) * w;
+        pts.push([base[0] + d[0] * L * t + side[0] * sw + n[0] * curl,
+                  base[1] + d[1] * L * t - 0.10 * t * t + n[1] * curl,
+                  base[2] + d[2] * L * t + side[2] * sw + n[2] * curl,
+                  n[0], n[1], n[2], GREENS, wi === 0 ? -0.25 : 0.0, true, null]);
+      }
+    }
+  }
+
+  // paper wrap
+  const y0 = -0.20, y1 = 0.30, r0 = 0.06, r1 = 0.36;
+  const k = (r1 - r0) / (y1 - y0);
+  const rings = 50;
+  for (let i = 0; i < rings; i++) {
+    const t = i / (rings - 1);
+    const r = r0 + (r1 - r0) * t;
+    const count = Math.max(8, Math.floor(170 * r));
+    for (let j = 0; j < count; j++) {
+      const ph = (j + rnd()) / count * 2 * Math.PI;
+      const c = Math.cos(ph), s = Math.sin(ph);
+      let y = y0 + (y1 - y0) * t;
+      if (t > 0.9) y += 0.03 * Math.sin(9 * ph);
+      const fold = 0.3 * (Math.abs(Math.sin(5 * ph)) - 0.6);
+      const nn = norm([c, -k, s]);
+      pts.push([r * c, y, r * s, nn[0], nn[1], nn[2], PAPER, fold, false, null]);
+    }
+  }
+
+  // stems under the wrap
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * 2 * Math.PI;
+    const sx = 0.025 * Math.cos(a), sz = 0.025 * Math.sin(a);
+    for (let j = 0; j < 40; j++) {
+      const t = j / 39;
+      pts.push([sx * (1 + 1.2 * t), -0.20 - 0.30 * t, sz * (1 + 1.2 * t),
+                Math.cos(a), 0.0, Math.sin(a), GREENS, -0.1, true, null]);
+    }
+  }
+
+  // ribbon and bow
+  const by = -0.12;
+  const br = r0 + k * (by - y0) + 0.01;
+  for (let j = 0; j < 90; j++) {
+    const ph = j / 90 * 2 * Math.PI;
+    for (const dy of [-0.012, 0.0, 0.012]) {
+      pts.push([br * Math.cos(ph), by + dy, br * Math.sin(ph),
+                Math.cos(ph), 0.0, Math.sin(ph), RIBBON, 0.0, false, null]);
+    }
+  }
+  const knot = [0.0, by, br + 0.01];
+  for (const side of [-1, 1]) {
+    for (let j = 0; j < 70; j++) {
+      const a = j / 70 * 2 * Math.PI;
+      const lx = side * (0.07 + 0.07 * Math.cos(a));
+      const ly = 0.04 * Math.sin(a) + 0.02 * (0.07 + 0.07 * Math.cos(a)) / 0.14;
+      for (const fill of [1.0, 0.7]) {
+        pts.push([knot[0] + lx * fill, knot[1] + ly * fill, knot[2] + 0.01,
+                  side * 0.3, 0.2, 0.93, RIBBON, 0.1, true, null]);
+      }
+    }
+    for (let j = 0; j < 30; j++) {
+      const t = j / 29;
+      pts.push([knot[0] + side * 0.06 * t, knot[1] - 0.15 * t, knot[2] + 0.015,
+                side * 0.2, 0.0, 0.98, RIBBON, -0.05 + 0.05 * Math.sin(t * 9), true, null]);
+    }
+  }
+  for (const dx of [-0.01, 0.0, 0.01]) pts.push([dx, by, knot[2] + 0.02, 0, 0, 1, RIBBON, 0.2, true, "@"]);
+
+  const babies = [];
+  for (let i = 0; i < 90; i++) {
+    const a = rnd() * 2 * Math.PI;
+    const el = uni(0.3, 1.4);
+    const rr = uni(0.40, 0.58);
+    babies.push([rr * Math.cos(a) * Math.cos(el), C[1] + rr * Math.sin(el),
+                 rr * Math.sin(a) * Math.cos(el), uni(0, 6.28)]);
+  }
+
+  const sparkles = [];
+  for (let i = 0; i < 30; i++) {
+    const a = rnd() * 2 * Math.PI;
+    const rr = uni(0.75, 0.95);
+    sparkles.push([rr * Math.cos(a), uni(-0.3, 1.0), rr * Math.sin(a), uni(0, 6.28), uni(1.5, 4.0)]);
+  }
+  return { pts, flowers, babies, sparkles };
+}
+
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+function updateHearts(hearts, dt) {
+  while (hearts.length < NUM_HEARTS) {
+    hearts.push([Math.random(), 1.0 + Math.random(), 0.03 + Math.random() * 0.05,
+                 Math.random() * 6.28, pick(HEART_COLORS)]);
+  }
+  for (const h of hearts) {
+    h[1] -= h[2] * dt;
+    if (h[1] < 0) { h[0] = Math.random(); h[1] = 1.0; h[4] = pick(HEART_COLORS); }
+  }
+}
+
+// ---- screen ----
+const canvas = document.getElementById("c");
+const g = canvas.getContext("2d");
+const FONT = 'ui-monospace, Menlo, Consolas, "Courier New", monospace';
+let W = 0, H = 0, cols = 0, rows = 0, viewRows = 0, cellW = 0, cellH = 0, msgFs = 0, msgTop = 0;
+let chars = [], colors = new Uint8Array(0), zbuf = new Float32Array(0);
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cellW = Math.max(4.4, Math.min(8, W / 84));
+  cellH = cellW * 2;
+  cols = Math.max(20, Math.floor(W / cellW));
+  const longest = Math.max.apply(null, MESSAGE.map(m => m.length));
+  msgFs = Math.max(14, Math.min(34, (W * 0.88) / (longest * 0.62)));
+  const msgH = MESSAGE.length * msgFs * 1.4 + 26;
+  rows = Math.max(12, Math.floor(H / cellH));
+  viewRows = Math.max(10, Math.floor((H - msgH) / cellH));
+  msgTop = viewRows * cellH + 6;
+  chars = new Array(cols * rows).fill(null);
+  colors = new Uint8Array(cols * rows);
+  zbuf = new Float32Array(cols * rows);
+}
+
+function render(scene, t, hearts) {
+  chars.fill(null);
+  zbuf.fill(-1e9);
+
+  const scale = Math.max(1.0, Math.min((viewRows - 2) / 1.45, (cols - 2) / 2.7));
+  const sxScale = scale * 2.0;
+  const cx = cols / 2;
+  const cy = Math.max(1, (viewRows - 1.45 * scale) / 2) + 0.78 * scale;
+
+  const ang = t * SPIN_SPEED;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const ct = Math.cos(TILT), st = Math.sin(TILT);
+
+  function plot(col, row, z, ch, color) {
+    if (row >= 0 && row < viewRows && col >= 0 && col < cols) {
+      const i = row * cols + col;
+      if (z > zbuf[i]) { zbuf[i] = z; chars[i] = ch; colors[i] = color; }
+    }
+  }
+  function project(x, y, z) {
+    const xr = x * ca - z * sa, zr = x * sa + z * ca;
+    const yp = y - PIVOT_Y;
+    const yt = yp * ct - zr * st, zt = yp * st + zr * ct;
+    const f = CAM_DIST / (CAM_DIST - zt);
+    return [cx + xr * f * sxScale, cy - yt * f * scale, zt, f];
+  }
+  const clamp = b => Math.min(0.999, Math.max(0.0, b));
+
+  for (const h of hearts) {
+    let col = Math.trunc((h[0] + 0.015 * Math.sin(t * 1.2 + h[3])) * cols) % cols;
+    if (col < 0) col += cols;
+    plot(col, Math.trunc(h[1] * viewRows), -50, HEART, h[4]);
+  }
+
+  for (const p of scene.pts) {
+    const pr = project(p[0], p[1], p[2]);
+    const nxr = p[3] * ca - p[5] * sa, nzr = p[3] * sa + p[5] * ca;
+    const nyt = p[4] * ct - nzr * st, nzt = p[4] * st + nzr * ct;
+    let dot = nxr * LX + nyt * LY + nzt * LZ;
+    if (p[8] && dot < 0) dot = -dot * 0.55;
+    const b = clamp(0.25 + 0.75 * Math.max(0.0, dot) + p[7]);
+    const pal = p[6];
+    plot(Math.trunc(pr[0]), Math.trunc(pr[1]), pr[2],
+         p[9] || SHADE[Math.floor(b * SHADE.length)], pal[Math.floor(b * pal.length)]);
+  }
+
+  for (const fl of scene.flowers) {
+    const pos = fl[0], kind = fl[1], pal = fl[2], cpal = fl[3], nPet = fl[4], R = fl[5], seed = fl[6];
+    const pr = project(pos[0], pos[1], pos[2]);
+    const fx = pr[0], fy = pr[1], zt = pr[2], f = pr[3];
+    const rx = R * f * sxScale, ry = R * f * scale;
+    const dim = -0.4 * (1 - Math.min(1.0, Math.max(0.0, (zt + 0.6) / 1.2)));
+    const rot = seed + ang * 0.7;
+    for (let row = Math.trunc(fy - ry) - 1; row < Math.trunc(fy + ry) + 2; row++) {
+      const dy = (row + 0.5 - fy) / ry;
+      for (let col = Math.trunc(fx - rx) - 1; col < Math.trunc(fx + rx) + 2; col++) {
+        const dx = (col + 0.5 - fx) / rx;
+        if (kind === "disc") {
+          const s = Math.sqrt(dx * dx + dy * dy);
+          if (s > 1.0) continue;
+          if (s < 0.3) {
+            const b = clamp(0.55 - 0.35 * dx - 0.35 * dy + dim);
+            plot(col, row, zt + 0.06, s < 0.17 ? "@" : "o", cpal[Math.floor(b * cpal.length)]);
+            continue;
+          }
+          const ph = Math.atan2(dy, dx);
+          const reach = 0.32 + 0.68 * Math.pow(Math.abs(Math.cos(nPet * (ph + rot) / 2)), 0.7);
+          if (s > reach) continue;
+          const edge = s > reach - 0.14 ? -0.22 : 0.0;
+          const b = clamp(0.62 - 0.22 * dx - 0.28 * dy + 0.12 * s + edge + dim);
+          plot(col, row, zt + 0.04 * (1 - s),
+               PETAL_SHADE[Math.floor(b * PETAL_SHADE.length)], pal[Math.floor(b * pal.length)]);
+        } else {
+          const v = (1 - dy) / 2;
+          if (v < 0 || v > 1) continue;
+          const hw = 0.62 * Math.sin(Math.PI * 0.5 * Math.min(1.0, v * 1.5 + 0.05));
+          if (hw <= 0 || Math.abs(dx) > hw) continue;
+          const xn = dx / hw;
+          const cc = Math.cos(1.5 * Math.PI * xn);
+          if (v > 0.72 + 0.28 * cc * cc) continue;
+          const seam = (Math.abs(Math.abs(xn) - 0.33) < 0.12 && v > 0.3) ? -0.25 : 0.0;
+          const b = clamp(0.55 - 0.3 * xn + 0.1 * v + seam + dim);
+          plot(col, row, zt + 0.03,
+               PETAL_SHADE[Math.floor(b * PETAL_SHADE.length)], pal[Math.floor(b * pal.length)]);
+        }
+      }
+    }
+  }
+
+  for (const bb of scene.babies) {
+    const pr = project(bb[0], bb[1], bb[2]);
+    const star = Math.sin(t * 2 + bb[3]) > 0.6;
+    plot(Math.trunc(pr[0]), Math.trunc(pr[1]), pr[2] + 0.02, star ? "*" : DOT, star ? 231 : 255);
+  }
+
+  for (const sp of scene.sparkles) {
+    const pr = project(sp[0], sp[1], sp[2]);
+    const col = Math.trunc(pr[0]), row = Math.trunc(pr[1]);
+    const tw = Math.sin(t * sp[4] + sp[3]);
+    if (tw > 0.85) plot(col, row, pr[2], "*", 231);
+    else if (tw > 0.4) plot(col, row, pr[2], "+", 225);
+    else if (tw > 0.0) plot(col, row, pr[2], DOT, 218);
+  }
+
+  // paint
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, W, H);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = (cellW / 0.6).toFixed(2) + "px " + FONT;
+  const xOff = (W - cols * cellW) / 2;
+  let last = -1;
+  for (let r = 0; r < viewRows; r++) {
+    const y = (r + 0.5) * cellH;
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const ch = chars[i];
+      if (ch === null) continue;
+      if (colors[i] !== last) { last = colors[i]; g.fillStyle = CSS[last]; }
+      g.fillText(ch, xOff + (c + 0.5) * cellW, y);
+    }
+  }
+
+  // message
+  g.font = "600 " + msgFs.toFixed(1) + "px " + FONT;
+  const adv = msgFs * 0.62;
+  const shift = Math.floor(t * 6);
+  MESSAGE.forEach(function (line, li) {
+    const y = msgTop + (li + 0.5) * msgFs * 1.4;
+    const x0 = W / 2 - (line.length * adv) / 2 + adv / 2;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === " ") continue;
+      g.fillStyle = CSS[MSG_COLORS[(i + shift) % MSG_COLORS.length]];
+      g.fillText(ch === "♥" ? HEART : ch, x0 + i * adv, y);
+    }
+  });
+}
+
+const scene = buildScene();
+const hearts = [];
+let startMs = 0, lastMs = 0, lastDraw = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!startMs) { startMs = lastMs = now; }
+  if (now - lastDraw < 1000 / FPS - 2) return;
+  lastDraw = now;
+  const dt = Math.min(0.25, (now - lastMs) / 1000);
+  lastMs = now;
+  updateHearts(hearts, dt);
+  render(scene, (now - startMs) / 1000, hearts);
+}
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
+resize();
+requestAnimationFrame(frame);
+
+// ---- song: Las Mañanitas (traditional), played as a little music box ----
+// [note, beats] in 3/4 time. 69 = the A above middle C.
+const MELODY = [
+  [64, .5], [64, .5],
+  [69, 1.5], [69, .5], [68, .5], [69, .5],
+  [71, 1.5], [68, .5], [69, .5], [71, .5],
+  [73, 1.5], [69, .5], [71, .5], [73, .5],
+  [74, 2], [74, .5], [74, .5],
+  [73, 1.5], [71, .5], [69, .5], [68, .5],
+  [71, 1], [69, .5], [68, .5], [69, .5], [71, .5],
+  [73, 1], [74, 1], [71, 1],
+  [69, 2], [73, 1],
+  [71, 1], [68, .5], [68, .5], [69, .5], [71, .5],
+  [73, 1], [69, 1], [73, 1],
+  [71, 1], [68, .5], [68, .5], [69, .5], [71, .5],
+  [73, 2], [69, .5], [69, .5],
+  [74, 1.5], [74, .5], [76, .5], [74, .5],
+  [73, 1], [69, .5], [68, .5], [69, .5], [71, .5],
+  [73, 1], [74, 1], [71, 1],
+  [69, 2],
+];
+const BARS = "A E A D A E A A E A E A D A A A".split(" ");
+const CHORD = { A: [45, 57, 61], E: [40, 56, 59], D: [50, 57, 62] };
+const BEAT = 0.6;
+const LOOP_BEATS = 52;
+let actx = null, master = null, nextLoop = 0, soundOn = true;
+
+function tone(midi, at, dur, vol, type) {
+  const o = actx.createOscillator(), a = actx.createGain();
+  o.type = type;
+  o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+  a.gain.setValueAtTime(0.0001, at);
+  a.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+  a.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(a); a.connect(master);
+  o.start(at); o.stop(at + dur + 0.05);
+}
+function scheduleLoop(t0) {
+  let b = 0;
+  for (const n of MELODY) {
+    const at = t0 + b * BEAT, ring = Math.max(1.1, n[1] * BEAT * 1.8);
+    tone(n[0] + 12, at, ring, 0.20, "sine");
+    tone(n[0] + 24, at, ring * 0.5, 0.035, "sine");
+    b += n[1];
+  }
+  BARS.forEach(function (name, i) {
+    const at = t0 + (1 + i * 3) * BEAT, ch = CHORD[name];
+    tone(ch[0] + 12, at, BEAT * 2.4, 0.10, "triangle");
+    if (i === BARS.length - 1) return;
+    for (const beat of [1, 2]) {
+      const c2 = ((i === 6 || i === 14) && beat === 2) ? CHORD.E : ch;
+      tone(c2[1] + 12, at + beat * BEAT, BEAT * 0.9, 0.035, "sine");
+      tone(c2[2] + 12, at + beat * BEAT, BEAT * 0.9, 0.035, "sine");
+    }
+  });
+}
+function pump() {
+  if (!actx || actx.state !== "running") return;
+  if (nextLoop - actx.currentTime < 1.5) {
+    if (nextLoop < actx.currentTime) nextLoop = actx.currentTime + 0.15;
+    scheduleLoop(nextLoop);
+    nextLoop += LOOP_BEATS * BEAT;
+  }
+}
+function startSong() {
+  if (!PLAY_SONG || actx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  master = actx.createGain();
+  master.gain.value = 0.9;
+  master.connect(actx.destination);
+  actx.resume();
+  nextLoop = actx.currentTime + 0.9;
+  setInterval(pump, 250);
+  pump();
+}
+
+const openEl = document.getElementById("open");
+const sndEl = document.getElementById("snd");
+if (!PLAY_SONG) sndEl.style.display = "none";
+openEl.addEventListener("click", function () {
+  startSong();
+  openEl.classList.add("gone");
+});
+sndEl.addEventListener("click", function () {
+  if (!actx) { startSong(); return; }
+  soundOn = !soundOn;
+  master.gain.setTargetAtTime(soundOn ? 0.9 : 0.0, actx.currentTime, 0.05);
+  sndEl.classList.toggle("off", !soundOn);
+});
+document.addEventListener("visibilitychange", function () {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+</script>
+</body>
+</html>
